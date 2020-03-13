@@ -9,12 +9,6 @@
 import Foundation
 import CocoaAsyncSocket
 
-// MARK: TCPSocketError
-
-public enum TCPSocketError: Error {
-  case invalidHost
-}
-
 // MARK: TCPSocketClose
 
 public enum TCPSocketClose {
@@ -28,55 +22,82 @@ public enum TCPSocketClose {
 
 public protocol TCPSocketDelegate: class {
   func socketDidOpen(_ socket: TCPSocket)
-  func socketDidClose(_ socket: TCPSocket, wasOpen: Bool, error: Error?)
-  func socketDidRead(_ socket: TCPSocket, data: Data)
-  func socketDidWrite(_ socket: TCPSocket)
+  func socketDidClose(_ socket: TCPSocket, error: Error?)
+  func socketDidRead(_ socket: TCPSocket, data: Data, tag: Int)
+  func socketDidWrite(_ socket: TCPSocket, tag: Int)
 }
 
 // MARK: TCPSocket
 
-public final class TCPSocket: NSObject, ReadStream, WriteStream {
-  public typealias ReadHandler = (Data) -> Void
-  public typealias WriteHandler = () -> Void
+public final class TCPSocket: NSObject {
+  /// The endpoint to connect to.
+  public let endpoint: Endpoint
 
-  private let socketDelegateQueue: DispatchQueue
-  private let socket: GCDAsyncSocket
-  private var wasOpen = false
-
+  /// The delegate to handle socket events.
   public weak var delegate: TCPSocketDelegate?
-  public var tlsPolicy: TLSPolicy?
 
-  /// Initializes a new TCPSocket wrapping a GCDAsyncSocket.
-  internal init(wrapping socket: GCDAsyncSocket) {
-    self.socket = socket
-    self.socketDelegateQueue = DispatchQueue(label: "Telegraph.TCPSocket.delegate")
+  private let socket: GCDAsyncSocket
+  private let tlsPolicy: TLSPolicy?
+
+  /// Creates a socket to connect to an endpoint.
+  public init(endpoint: Endpoint, tlsPolicy: TLSPolicy? = nil) {
+    self.endpoint = endpoint
+    self.tlsPolicy = tlsPolicy
+    self.socket = GCDAsyncSocket()
+
+    defer { socket.delegate = self }
     super.init()
-
-    socket.setDelegate(self, delegateQueue: socketDelegateQueue)
   }
 
-  /// Initializes a new TCPSocket.
-  public convenience override init() {
-    self.init(wrapping: GCDAsyncSocket())
+  /// Creates a socket by wrapping an existing GCDAsyncSocket.
+  internal init(wrapping socket: GCDAsyncSocket) {
+    self.endpoint = Endpoint(host: socket.localHost ?? "", port: socket.localPort)
+    self.tlsPolicy = nil
+    self.socket = socket
+
+    defer { socket.delegate = self }
+    super.init()
   }
 
-  /// Returns a boolean indicating if the socket is connected.
-  public var isOpen: Bool {
+  /// Indicates if the socket is connected.
+  public var isConnected: Bool {
     return socket.isConnected
   }
 
-  /// Opens a connection to the host based on the provided url.
-  public func open(toURL url: URL, timeout: TimeInterval) {
-    open(toHost: url.host ?? "", port: url.port ?? url.portBasedOnScheme, timeout: timeout)
+  /// The local endpoint information, only available when connected.
+  public var localEndpoint: Endpoint? {
+    guard let host = socket.localHost else { return nil }
+    return Endpoint(host: host, port: socket.localPort)
   }
 
-  /// Opens a connection to the host on the provided port.
-  public func open(toHost host: String, port: Int, timeout: TimeInterval) {
+  /// The remote endpoint information, only available when connected.
+  public var remoteEndpoint: Endpoint? {
+    guard let host = socket.connectedHost else { return nil }
+    return Endpoint(host: host, port: socket.connectedPort)
+  }
+
+  /// The queue for delegate calls.
+  public var queue: DispatchQueue? {
+    return socket.delegateQueue
+  }
+
+  /// Sets the delegate that will receive delegate calls on the provided queue.
+  public func setDelegate(_ delegate: TCPSocketDelegate, queue: DispatchQueue) {
+    self.delegate = delegate
+    socket.setDelegate(self, delegateQueue: queue)
+  }
+
+  /// Sets the queue to perform the delegate calls on.
+  public func setDelegateQueue(_ queue: DispatchQueue) {
+    socket.setDelegate(self, delegateQueue: queue)
+  }
+
+  /// Opens the connection, calls the delegate if it succeeds / fails.
+  public func connect(timeout: TimeInterval = 30) {
     do {
-      guard !host.isEmpty else { throw TCPSocketError.invalidHost }
-      try socket.connect(toHost: host, onPort: UInt16(port), withTimeout: timeout)
+      try socket.connect(toHost: endpoint.host, onPort: UInt16(endpoint.port), withTimeout: timeout)
     } catch {
-      delegate?.socketDidClose(self, wasOpen: false, error: error)
+      delegate?.socketDidClose(self, error: error)
     }
   }
 
@@ -90,14 +111,19 @@ public final class TCPSocket: NSObject, ReadStream, WriteStream {
     }
   }
 
-  /// Reads data with a maximum duration of timeout.
-  public func read(timeout: TimeInterval) {
-    socket.readData(withTimeout: timeout, tag: 0)
+  /// Reads data with a timeout and tag.
+  public func read(timeout: TimeInterval = -1, tag: Int = 0) {
+    socket.readData(withTimeout: timeout, tag: tag)
   }
 
-  /// Writes data with a maximum duration of timeout.
-  public func write(data: Data, timeout: TimeInterval) {
-    socket.write(data, withTimeout: timeout, tag: 0)
+  /// Reads data with a max length, timeout and tag.
+  public func read(maxLength: Int, timeout: TimeInterval = -1, tag: Int = 0) {
+    socket.readData(toLength: UInt(maxLength), withTimeout: timeout, tag: tag)
+  }
+
+  /// Writes data with a timeout and tag.
+  public func write(data: Data, timeout: TimeInterval = -1, tag: Int = 0) {
+    socket.write(data, withTimeout: timeout, tag: tag)
   }
 
   /// Starts the TLS handshake for secure connections.
@@ -113,37 +139,49 @@ public final class TCPSocket: NSObject, ReadStream, WriteStream {
   }
 }
 
+/// ReadStream and WriteStream implementation
+
+extension TCPSocket: ReadStream, WriteStream {
+  /// Reads data with a timeout and tag.
+  public func read(timeout: TimeInterval) {
+    read(timeout: timeout, tag: 0)
+  }
+
+  /// Writes data with a timeout and tag.
+  public func write(data: Data, timeout: TimeInterval) {
+    write(data: data, timeout: timeout, tag: 0)
+  }
+
+  /// Flushes any open writes.
+  public func flush() {}
+}
+
 // MARK: GCDAsyncSocketDelegate implementation
 
 extension TCPSocket: GCDAsyncSocketDelegate {
+  /// Raised when the socket has connected to the host.
   public func socket(_ sock: GCDAsyncSocket, didConnectToHost host: String, port: UInt16) {
-    wasOpen = true
     delegate?.socketDidOpen(self)
   }
 
+  /// Raised when the socket has disconnected from the host.
   public func socketDidDisconnect(_ sock: GCDAsyncSocket, withError err: Error?) {
-    delegate?.socketDidClose(self, wasOpen: wasOpen, error: err)
+    delegate?.socketDidClose(self, error: err)
   }
 
+  /// Raised when the socket is done reading data.
   public func socket(_ sock: GCDAsyncSocket, didRead data: Data, withTag tag: Int) {
-    delegate?.socketDidRead(self, data: data)
+    delegate?.socketDidRead(self, data: data, tag: tag)
   }
 
+  /// Raised when the socket is done writing data.
   public func socket(_ sock: GCDAsyncSocket, didWriteDataWithTag tag: Int) {
-    delegate?.socketDidWrite(self)
+    delegate?.socketDidWrite(self, tag: tag)
   }
 
+  /// Raised when the socket is asking to evaluate the trust as part of the TLS handshake.
   public func socket(_ sock: GCDAsyncSocket, didReceive trust: SecTrust, completionHandler: @escaping (Bool) -> Void) {
-    // Evaluate the trust using the provided policy
     let trusted = tlsPolicy?.evaluate(trust: trust) ?? false
     completionHandler(trusted)
   }
-}
-
-// MARK: TCPSocketDelegate default implementations
-
-extension TCPSocketDelegate {
-  public func socketDidOpen(_ socket: TCPSocket) {}
-  public func socketDidRead(_ socket: TCPSocket, data: Data) {}
-  public func socketDidWrite(_ socket: TCPSocket) {}
 }

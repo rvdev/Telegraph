@@ -5,9 +5,6 @@
 //  Created by Yvo van Beek on 2/4/17.
 //  Copyright © 2017 Building42. All rights reserved.
 //
-//  TODO: we should join all route regexes into one big regex
-//  TODO: routes should first be matched on route and properly handle the case of 405 - method not allowed
-//
 
 open class HTTPRouteHandler: HTTPRequestHandler {
   public var routes = [HTTPRoute]()
@@ -17,14 +14,14 @@ open class HTTPRouteHandler: HTTPRequestHandler {
     var matchingRoute: HTTPRoute?
 
     // Do we want to allow HEAD requests on GET routes?
-    let tryGetForHead = implicitHeadRequests && (request.method == .head)
+    let tryGetForHead = implicitHeadRequests && (request.method == .HEAD)
 
     for route in routes {
       // Skip routes that can't handle our method
       if !route.canHandle(method: request.method) {
 
         // Is this a HEAD request and do we want to serve this as a GET request?
-        if !tryGetForHead || !route.canHandle(method: .get) {
+        if !tryGetForHead || !route.canHandle(method: .GET) {
           continue
         }
       }

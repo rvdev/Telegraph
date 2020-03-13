@@ -16,8 +16,8 @@ public enum WebSocketError: Error {
   case payloadTooLarge
 }
 
-extension WebSocketError {
-  public var code: UInt16 {
+public extension WebSocketError {
+  var code: UInt16 {
     switch self {
     case .invalidMessage: return 1002
     case .invalidOpcode: return 1002
@@ -37,5 +37,11 @@ extension WebSocketError: CustomStringConvertible {
     case .payloadTooLarge: return "Payload is too large"
     case .payloadIsNotText: return "Payload is not UTF8 string data"
     }
+  }
+}
+
+extension WebSocketError: LocalizedError {
+  public var errorDescription: String? {
+    return description
   }
 }

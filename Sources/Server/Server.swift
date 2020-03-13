@@ -9,182 +9,246 @@
 import Foundation
 
 open class Server {
-  public var delegateQueue: DispatchQueue = DispatchQueue(label: "Telegraph.Server.delegate")
+  public weak var delegate: ServerDelegate?
+  public var delegateQueue = DispatchQueue(label: "Telegraph.Server.delegate")
 
   public var httpConfig = HTTPConfig.serverDefault
   public var webSocketConfig = WebSocketConfig.serverDefault
   public weak var webSocketDelegate: ServerWebSocketDelegate?
 
-  private let workQueue = DispatchQueue(label: "Telegraph.Server.work")
-  private var listener: TCPListener
-  private var httpConnections = Set<HTTPConnection>()
-  private var webSocketConnections = Set<WebSocketConnection>()
+  private var listener: TCPListener?
+  private var tlsConfig: TLSConfig?
+  private var httpConnections = SynchronizedSet<HTTPConnection>()
+  private var webSocketConnections = SynchronizedSet<WebSocketConnection>()
 
-  /// Initializes a new Server instance.
-  public init() {
-    listener = TCPListener(tlsConfig: nil)
-    listener.delegate = self
-  }
+  private let listenerQueue = DispatchQueue(label: "Telegraph.Server.listener")
+  private let connectionsQueue = DispatchQueue(label: "Telegraph.Server.connections")
+  private let workerQueue = OperationQueue()
 
+  /// Initializes a unsecure Server instance.
+  public init() {}
+
+  /// Initializes a secure Server instance.
   public init(identity: CertificateIdentity, caCertificates: [Certificate]) {
-    listener = TCPListener(tlsConfig: TLSConfig(serverIdentity: identity, caCertificates: caCertificates))
-    listener.delegate = self
+    tlsConfig = TLSConfig(serverIdentity: identity, caCertificates: caCertificates)
   }
 
-  /// Starts the server on the specified port.
-  open func start(onPort port: UInt16 = 0) throws {
-    try listener.accept(onPort: port)
-  }
+  /// Starts the server on the specified port or 0 for automatic port assignment.
+  open func start(port: Endpoint.Port = 0, interface: String? = nil) throws {
+    listener = TCPListener(port: port, interface: interface, tlsConfig: tlsConfig)
+    listener!.delegate = self
 
-  /// Starts the server on the specified network interface and port.
-  open func start(onInterface interface: String?, port: UInt16 = 0) throws {
-    try listener.accept(onInterface: interface, port: port)
+    try listener!.start(queue: listenerQueue)
   }
 
   /// Stops the server, optionally we wait for requests to finish.
   open func stop(immediately: Bool = false) {
-    listener.disconnect()
+    listener?.stop()
 
     // Close the connections
-    workQueue.sync {
-      httpConnections.forEach { $0.close(immediately: immediately) }
-      webSocketConnections.forEach { $0.close(immediately: immediately) }
+    httpConnections.forEach { $0.close(immediately: immediately) }
+    webSocketConnections.forEach { $0.close(immediately: immediately) }
+  }
+
+  /// Handles an incoming socket. The Server normally wraps the socket into a HTTP connection and starts parsing requests.
+  open func handleIncoming(socket: TCPSocket) {
+    // Configure the socket
+    socket.setDelegateQueue(connectionsQueue)
+
+    // Wrap the socket in a HTTP connection
+    let httpConnection = HTTPConnection(socket: socket, config: httpConfig)
+    httpConnections.insert(httpConnection)
+
+    // Open the HTTP connection
+    httpConnection.delegate = self
+    httpConnection.open()
+  }
+
+  /// Handles an incoming request from the HTTP connection. The Server normally offloads the request to a worker queue to allow concurrent requests.
+  open func handleIncoming(request: HTTPRequest, connection: HTTPConnection, error: Error?) {
+    workerQueue.addOperation { [weak self, weak connection] in
+      guard let self = self, let connection = connection else { return }
+
+      // Get a response for the request
+      let response = self.responseFor(request: request, error: error)
+
+      // Send the response or close the connection
+      self.connectionsQueue.async {
+        if let response = response {
+          connection.send(response: response, toRequest: request)
+        } else {
+          connection.close(immediately: true)
+        }
+      }
     }
   }
 
-  /// Returns the port on which the listener is accepting connections.
-  open var port: UInt16 {
-    return listener.port
+  /// Handles the upgrade of an HTTP request. The Server normally supports the upgrade of an HTTP connection to a WebSocket connection.
+  open func handleUpgrade(request: HTTPRequest, connection: HTTPConnection) {
+    // We can only handle the WebSocket protocol
+    guard request.isWebSocketUpgrade else {
+      connection.close(immediately: true)
+      return
+    }
+
+    // Remove the http connection
+    httpConnections.remove(connection)
+
+    // Extract the socket and any WebSocket data already read
+    let (socket, webSocketData) = connection.upgrade()
+
+    // Add the websocket connection
+    let webSocketConnection = WebSocketConnection(socket: socket, config: webSocketConfig)
+    webSocketConnections.insert(webSocketConnection)
+
+    // Open the websocket connection
+    webSocketConnection.delegate = self
+    webSocketConnection.open(data: webSocketData)
+
+    // Call the delegate
+    delegateQueue.async { [weak self] in
+      guard let self = self else { return }
+      self.webSocketDelegate?.server(self, webSocketDidConnect: webSocketConnection, handshake: request)
+    }
   }
 
-  /// Handles an incoming HTTP request.
-  private func handle(request: HTTPRequest, error: Error?) -> HTTPResponse? {
+  /// Creates a reponse to an HTTP request. If an error occurs, it will call respondTo(error:).
+  open func responseFor(request: HTTPRequest) throws -> HTTPResponse? {
+    // Put the request through the chain of handlers
+    let response = try httpConfig.requestChain(request)
+
+    // Check that a possible connection upgrade was handled properly
+    if let response = response, response.status != .switchingProtocols, request.isConnectionUpgrade {
+      throw HTTPError.protocolNotSupported
+    }
+
+    return response
+  }
+
+  /// Creates a response to an error that occured while processing an HTTP request.
+  open func responseFor(error: Error) -> HTTPResponse? {
+    return httpConfig.errorHandler.respond(to: error)
+  }
+
+  /// Called by the worker queue to create a response to an HTTP request or possible errors.
+  private func responseFor(request: HTTPRequest, error: Error?) -> HTTPResponse? {
     do {
       if let error = error { throw error }
-      return try httpConfig.requestChain(request)
+      return try responseFor(request: request)
     } catch {
-      return httpConfig.errorHandler.respond(to: error)
+      return responseFor(error: error)
     }
   }
 }
 
 // MARK: Server properties
 
-extension Server {
-  /// Returns a boolean indicating if the server is running.
-  public var isRunning: Bool {
-    return listener.isAccepting
+public extension Server {
+  /// The number of concurrent requests that can be handled.
+  var concurrency: Int {
+    get { return workerQueue.maxConcurrentOperationCount }
+    set { workerQueue.maxConcurrentOperationCount = newValue }
   }
 
-  /// Returns a boolean indicating if the server is secure (HTTPS).
-  public var isSecure: Bool {
-    return listener.tlsConfig != nil
+  /// The port on which the listener is accepting connections.
+  var port: Endpoint.Port {
+    return listener?.port ?? 0
   }
 
-  /// Returns the number of active HTTP connections.
-  public var httpConnectionCount: Int {
-    return workQueue.sync { httpConnections.count }
+  /// Indicates if the server is running.
+  var isRunning: Bool {
+    return listener?.isListening ?? false
   }
 
-  /// Returns the number of active WebSocket connections.
-  public var webSocketCount: Int {
-    return workQueue.sync { webSocketConnections.count }
+  /// Indicates if the server is secure (HTTPS).
+  var isSecure: Bool {
+    return tlsConfig != nil
   }
 
-  /// Returns the connected
-  public var webSockets: [WebSocket] {
-    return workQueue.sync { Array(webSocketConnections) as [WebSocket] }
+  /// The number of active HTTP connections.
+  var httpConnectionCount: Int {
+    return httpConnections.count
+  }
+
+  /// The number of active WebSocket connections.
+  var webSocketCount: Int {
+    return webSocketConnections.count
+  }
+
+  /// The WebSockets currently connected to this server.
+  var webSockets: [WebSocket] {
+    return webSocketConnections.toArray()
   }
 }
 
 // MARK: TCPListenerDelegate implementation
 
 extension Server: TCPListenerDelegate {
+  /// Raised when the server's listener accepts an incoming socket connection.
   public func listener(_ listener: TCPListener, didAcceptSocket socket: TCPSocket) {
-    workQueue.async(weak: self) { me in
-      // Wrap the socket in a connection
-      let httpConnection = HTTPConnection(socket: socket, config: me.httpConfig)
-      me.httpConnections.insert(httpConnection)
-
-      // Open the http connection
-      httpConnection.delegate = me
-      httpConnection.open()
-    }
+    handleIncoming(socket: socket)
   }
 
-  public func listenerDisconnected(_ listener: TCPListener) {
-    delegateQueue.async(weak: self) { server in
-      server.webSocketDelegate?.serverDidDisconnect(self)
+  /// Raised when the server's listener disconnected.
+  public func listenerDisconnected(_ listener: TCPListener, error: Error?) {
+    delegateQueue.async { [weak self] in
+      guard let self = self else { return }
+      self.delegate?.serverDidStop(self, error: error)
+      self.webSocketDelegate?.serverDidDisconnect(self)
     }
   }
-
 }
 
 // MARK: HTTPConnectionDelegate implementation
 
 extension Server: HTTPConnectionDelegate {
+  /// Raised when an HTTP connection receives a request.
+  public func connection(_ httpConnection: HTTPConnection, handleIncomingRequest request: HTTPRequest, error: Error?) {
+    handleIncoming(request: request, connection: httpConnection, error: error)
+  }
+
+  /// Raised when an HTTP connection receives a response.
+  public func connection(_ httpConnection: HTTPConnection, handleIncomingResponse response: HTTPResponse, error: Error?) {
+    httpConnection.close(immediately: true)
+  }
+
+  /// Raised when an HTTP connection requests a connection upgrade.
+  public func connection(_ httpConnection: HTTPConnection, handleUpgradeByRequest request: HTTPRequest) {
+    handleUpgrade(request: request, connection: httpConnection)
+  }
+
+  /// Raised when an HTTP connection is closed, optionally with an error.
   public func connection(_ httpConnection: HTTPConnection, didCloseWithError error: Error?) {
-    workQueue.async(weak: self) { me in
-      me.httpConnections.remove(httpConnection)
-    }
-  }
-
-  public func connection(_ httpConnection: HTTPConnection, handleIncomingRequest request: HTTPRequest, error: Error?) -> HTTPResponse? {
-    return handle(request: request, error: error)
-  }
-
-  public func connection(_ httpConnection: HTTPConnection, handleUpgradeTo protocolName: String, initiatedBy request: HTTPRequest) -> Bool {
-    // We can only handle the WebSocket protocol
-    guard protocolName == HTTPMessage.webSocketProtocol else { return false }
-
-    workQueue.async(weak: self) { me in
-      // Remove the http connection
-      me.httpConnections.remove(httpConnection)
-
-      // Add the websocket connection
-      let webSocketConnection = WebSocketConnection(socket: httpConnection.socket, config: me.webSocketConfig)
-      me.webSocketConnections.insert(webSocketConnection)
-
-      // Open the websocket connection
-      webSocketConnection.delegate = me
-      webSocketConnection.open()
-
-      // Call the delegate
-      me.delegateQueue.async(weak: me) { server in
-        server.webSocketDelegate?.server(server, webSocketDidConnect: webSocketConnection, handshake: request)
-      }
-    }
-
-    return true
+    httpConnections.remove(httpConnection)
   }
 }
 
 // MARK: WebSocketConnectionDelegate implementation
 
 extension Server: WebSocketConnectionDelegate {
-  public func connection(_ webSocketConnection: WebSocketConnection, didCloseWithError error: Error?) {
-    workQueue.async(weak: self) { me in
-      // Remove the websocket connection
-      me.webSocketConnections.remove(webSocketConnection)
-
-      // Call the delegate
-      me.delegateQueue.async(weak: me) { server in
-        server.webSocketDelegate?.server(server, webSocketDidDisconnect: webSocketConnection, error: error)
-      }
-    }
-  }
-
+  /// Raised when a WebSocket connection receives a message.
   public func connection(_ webSocketConnection: WebSocketConnection, didReceiveMessage message: WebSocketMessage) {
-    // Call the delegate
-    delegateQueue.async(weak: self) { server in
-      server.webSocketDelegate?.server(server, webSocket: webSocketConnection, didReceiveMessage: message)
+    delegateQueue.async { [weak self] in
+      guard let self = self else { return }
+      self.webSocketDelegate?.server(self, webSocket: webSocketConnection, didReceiveMessage: message)
     }
   }
 
+  /// Raised when a WebSocket connection sends a message.
   public func connection(_ webSocketConnection: WebSocketConnection, didSendMessage message: WebSocketMessage) {
-    // Call the delegate
-    delegateQueue.async(weak: self) { server in
-      server.webSocketDelegate?.server(server, webSocket: webSocketConnection, didSendMessage: message)
+    delegateQueue.async { [weak self] in
+      guard let self = self else { return }
+      self.webSocketDelegate?.server(self, webSocket: webSocketConnection, didSendMessage: message)
+    }
+  }
+
+  /// Raised when a WebSocket connection is closed, optionally with an error.
+  public func connection(_ webSocketConnection: WebSocketConnection, didCloseWithError error: Error?) {
+    webSocketConnections.remove(webSocketConnection)
+
+    delegateQueue.async { [weak self] in
+      guard let self = self else { return }
+      self.webSocketDelegate?.server(self, webSocketDidDisconnect: webSocketConnection, error: error)
     }
   }
 }

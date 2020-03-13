@@ -6,65 +6,27 @@
 //  Copyright © 2017 Building42. All rights reserved.
 //
 
-public enum HTTPMethod {
-  case delete
-  case get
-  case head
-  case options
-  case post
-  case put
-  case method(String)
+public struct HTTPMethod: Hashable {
+  public let name: String
 }
 
-extension HTTPMethod: RawRepresentable {
-  public init(rawValue: String) {
-    let method = rawValue.uppercased()
-
-    switch method {
-    case "DELETE": self = .delete
-    case "GET": self = .get
-    case "HEAD": self = .head
-    case "OPTIONS": self = .options
-    case "POST": self = .post
-    case "PUT": self = .put
-    default: self = .method(method)
-    }
-  }
-
-  public var rawValue: String {
-    switch self {
-    case .delete: return "DELETE"
-    case .get: return "GET"
-    case .head: return "HEAD"
-    case .options: return "OPTIONS"
-    case .post: return "POST"
-    case .put: return "PUT"
-    case .method(let method): return method.uppercased()
-    }
-  }
+public extension HTTPMethod {
+  static let GET = HTTPMethod(name: "GET")
+  static let HEAD = HTTPMethod(name: "HEAD")
+  static let DELETE = HTTPMethod(name: "DELETE")
+  static let POST = HTTPMethod(name: "POST")
+  static let PUT = HTTPMethod(name: "PUT")
+  static let OPTIONS = HTTPMethod(name: "OPTIONS")
+  static let CONNECT = HTTPMethod(name: "CONNECT")
+  static let TRACE = HTTPMethod(name: "TRACE")
+  static let PATCH = HTTPMethod(name: "PATCH")
 }
 
 // MARK: CustomStringConvertible implementation
 
 extension HTTPMethod: CustomStringConvertible {
   public var description: String {
-    return rawValue
-  }
-}
-
-// MARK: Equatable implementation
-
-extension HTTPMethod: Equatable {
-  public static func == (lhs: HTTPMethod, rhs: HTTPMethod) -> Bool {
-    return lhs.rawValue == rhs.rawValue
-  }
-}
-
-// MARK: Hashable implementation
-
-extension HTTPMethod: Hashable {
-  public var hashValue: Int {
-    return rawValue.hashValue
+    return name
   }
 }
 
@@ -72,14 +34,6 @@ extension HTTPMethod: Hashable {
 
 extension HTTPMethod: ExpressibleByStringLiteral {
   public init(stringLiteral string: String) {
-    self.init(rawValue: string)
-  }
-
-  public init(extendedGraphemeClusterLiteral string: String) {
-    self.init(rawValue: string)
-  }
-
-  public init(unicodeScalarLiteral string: String) {
-    self.init(rawValue: string)
+    self.init(name: string)
   }
 }

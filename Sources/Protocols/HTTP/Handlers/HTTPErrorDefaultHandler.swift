@@ -21,11 +21,11 @@ public class HTTPErrorDefaultHandler: HTTPErrorHandler {
 
     // Request errors
     case HTTPError.invalidMethod:
-      return HTTPResponse(.methodNotAllowed)
+      return HTTPResponse(.methodNotAllowed, error: error)
     case HTTPError.invalidVersion:
-      return HTTPResponse(.httpVersionNotSupported)
+      return HTTPResponse(.httpVersionNotSupported, error: error)
     case HTTPError.headerOverflow:
-      return HTTPResponse(.requestHeaderFieldsTooLarge)
+      return HTTPResponse(.requestHeaderFieldsTooLarge, error: error)
     case is HTTPError:
       return HTTPResponse(.badRequest, error: error)
 

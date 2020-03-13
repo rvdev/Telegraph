@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		8284FF251ECEA49900303A00 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = 8284FF241ECEA49900303A00 /* index.html */; };
+		82A9A71C23E63C7E0072F4FC /* Telegraph.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 82A9A71B23E63C7E0072F4FC /* Telegraph.framework */; };
+		82A9A71D23E63C7E0072F4FC /* Telegraph.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 82A9A71B23E63C7E0072F4FC /* Telegraph.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		82EF341E1ECD33CF002DC910 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82EF341D1ECD33CF002DC910 /* AppDelegate.swift */; };
 		82EF34201ECD33CF002DC910 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82EF341F1ECD33CF002DC910 /* ViewController.swift */; };
 		82EF34231ECD33CF002DC910 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 82EF34211ECD33CF002DC910 /* Main.storyboard */; };
@@ -16,12 +18,25 @@
 		82EF34611ECD3C52002DC910 /* ca.der in Resources */ = {isa = PBXBuildFile; fileRef = 82EF345C1ECD3C52002DC910 /* ca.der */; };
 		82EF34631ECD3C52002DC910 /* localhost.p12 in Resources */ = {isa = PBXBuildFile; fileRef = 82EF345E1ECD3C52002DC910 /* localhost.p12 */; };
 		82EF34641ECD3C52002DC910 /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 82EF345F1ECD3C52002DC910 /* logo.png */; };
-		CC3E9E932A3AAF1075B26D04 /* Pods_tvOS_Example.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4D215157A3CDE984D6549450 /* Pods_tvOS_Example.framework */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		8247324523E6380C00A9BAFA /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				82A9A71D23E63C7E0072F4FC /* Telegraph.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		4D215157A3CDE984D6549450 /* Pods_tvOS_Example.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_tvOS_Example.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8284FF241ECEA49900303A00 /* index.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
+		82A9A71B23E63C7E0072F4FC /* Telegraph.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = Telegraph.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		82EF341A1ECD33CF002DC910 /* tvOS Example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "tvOS Example.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		82EF341D1ECD33CF002DC910 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		82EF341F1ECD33CF002DC910 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -32,8 +47,6 @@
 		82EF345C1ECD3C52002DC910 /* ca.der */ = {isa = PBXFileReference; lastKnownFileType = file; path = ca.der; sourceTree = "<group>"; };
 		82EF345E1ECD3C52002DC910 /* localhost.p12 */ = {isa = PBXFileReference; lastKnownFileType = file; path = localhost.p12; sourceTree = "<group>"; };
 		82EF345F1ECD3C52002DC910 /* logo.png */ = {isa = PBXFileReference; explicitFileType = compiled; path = logo.png; sourceTree = "<group>"; };
-		A7812D37ACEF4DBABC9BCCF8 /* Pods-tvOS Example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tvOS Example.debug.xcconfig"; path = "../Pods/Target Support Files/Pods-tvOS Example/Pods-tvOS Example.debug.xcconfig"; sourceTree = "<group>"; };
-		C48A993D74159CC56A269E3A /* Pods-tvOS Example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tvOS Example.release.xcconfig"; path = "../Pods/Target Support Files/Pods-tvOS Example/Pods-tvOS Example.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,7 +54,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CC3E9E932A3AAF1075B26D04 /* Pods_tvOS_Example.framework in Frameworks */,
+				82A9A71C23E63C7E0072F4FC /* Telegraph.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -51,7 +64,7 @@
 		7A76BC6732A40F727598219C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				4D215157A3CDE984D6549450 /* Pods_tvOS_Example.framework */,
+				82A9A71B23E63C7E0072F4FC /* Telegraph.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -63,7 +76,6 @@
 				82EF344D1ECD3B77002DC910 /* Demo */,
 				82EF345B1ECD3C52002DC910 /* Resources */,
 				82EF341B1ECD33CF002DC910 /* Products */,
-				B93BF1A0026E97C19D41C722 /* Pods */,
 				7A76BC6732A40F727598219C /* Frameworks */,
 			);
 			sourceTree = "<group>";
@@ -109,15 +121,6 @@
 			path = ../Resources;
 			sourceTree = "<group>";
 		};
-		B93BF1A0026E97C19D41C722 /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				A7812D37ACEF4DBABC9BCCF8 /* Pods-tvOS Example.debug.xcconfig */,
-				C48A993D74159CC56A269E3A /* Pods-tvOS Example.release.xcconfig */,
-			);
-			name = Pods;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -125,17 +128,18 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 82EF34291ECD33CF002DC910 /* Build configuration list for PBXNativeTarget "tvOS Example" */;
 			buildPhases = (
-				5848CAF9F4483971590E6120 /* [CP] Check Pods Manifest.lock */,
 				82EF34161ECD33CF002DC910 /* Sources */,
 				82EF34171ECD33CF002DC910 /* Frameworks */,
 				82EF34181ECD33CF002DC910 /* Resources */,
-				B5DC6E6FA8EE5728C7ED331F /* [CP] Embed Pods Frameworks */,
+				8247324523E6380C00A9BAFA /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			name = "tvOS Example";
+			packageProductDependencies = (
+			);
 			productName = "tvOS Example";
 			productReference = 82EF341A1ECD33CF002DC910 /* tvOS Example.app */;
 			productType = "com.apple.product-type.application";
@@ -147,25 +151,27 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 0830;
-				LastUpgradeCheck = 0930;
+				LastUpgradeCheck = 1020;
 				ORGANIZATIONNAME = Building42;
 				TargetAttributes = {
 					82EF34191ECD33CF002DC910 = {
 						CreatedOnToolsVersion = 8.3.2;
-						LastSwiftMigration = 0900;
+						LastSwiftMigration = 1020;
 						ProvisioningStyle = Automatic;
 					};
 				};
 			};
 			buildConfigurationList = 82EF34151ECD33CF002DC910 /* Build configuration list for PBXProject "tvOS Example" */;
 			compatibilityVersion = "Xcode 3.2";
-			developmentRegion = English;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
 			mainGroup = 82EF34111ECD33CF002DC910;
+			packageReferences = (
+			);
 			productRefGroup = 82EF341B1ECD33CF002DC910 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -190,49 +196,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		5848CAF9F4483971590E6120 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-tvOS Example-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		B5DC6E6FA8EE5728C7ED331F /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${SRCROOT}/../Pods/Target Support Files/Pods-tvOS Example/Pods-tvOS Example-frameworks.sh",
-				"${BUILT_PRODUCTS_DIR}/CocoaAsyncSocket-tvOS/CocoaAsyncSocket.framework",
-				"${BUILT_PRODUCTS_DIR}/HTTPParserC-tvOS/HTTPParserC.framework",
-				"${BUILT_PRODUCTS_DIR}/Telegraph-tvOS/Telegraph.framework",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/CocoaAsyncSocket.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/HTTPParserC.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/Telegraph.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/../Pods/Target Support Files/Pods-tvOS Example/Pods-tvOS Example-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		82EF34161ECD33CF002DC910 /* Sources */ = {
@@ -263,6 +226,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
@@ -321,6 +285,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
@@ -370,29 +335,27 @@
 		};
 		82EF342A1ECD33CF002DC910 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = A7812D37ACEF4DBABC9BCCF8 /* Pods-tvOS Example.debug.xcconfig */;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
 				INFOPLIST_FILE = "tvOS Example/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.Building42.Telegraph-tvOS.Example";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
 		82EF342B1ECD33CF002DC910 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = C48A993D74159CC56A269E3A /* Pods-tvOS Example.release.xcconfig */;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
 				INFOPLIST_FILE = "tvOS Example/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.Building42.Telegraph-tvOS.Example";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};

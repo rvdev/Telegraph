@@ -17,8 +17,8 @@ public class TelegraphDemo: NSObject {
   var webSocketClient: WebSocketClient!
 }
 
-extension TelegraphDemo {
-  public func start() {
+public extension TelegraphDemo {
+  func start() {
     // Comment out this line if you want HTTP instead of HTTPS
     loadCertificates()
 
@@ -59,59 +59,50 @@ extension TelegraphDemo {
       server = Server()
     }
 
-    // Set a low web socket ping interval to demonstrate ping-pong
-    server.webSocketConfig.pingInterval = 10
+    // Set the delegates and a low web socket ping interval to demonstrate ping-pong
+    server.delegate = self
     server.webSocketDelegate = self
+    server.webSocketConfig.pingInterval = 10
 
     // Define the demo routes
     // Note: we're ignoring possible strong retain cycles in the demo
-    server.route(.get, "hello/:name", serverHandleHello)
-    server.route(.get, "hello(/)", serverHandleHello)
-    server.route(.get, "secret/*") { .forbidden }
-    server.route(.get, "status") { (.ok, "Server is running") }
-
-    server.route(.post, "data", serverHandleData)
+    server.route(.GET, "hello/:name", serverHandleHello)
+    server.route(.GET, "hello(/)", serverHandleHello)
+    server.route(.GET, "redirect", serverHandleRedirect)
+    server.route(.GET, "secret/*") { .forbidden }
+    server.route(.GET, "status") { (.ok, "Server is running") }
+    server.route(.POST, "data", serverHandleData)
 
     server.serveBundle(.main, "/")
 
+    // Handle up to 4 requests simultaneously
+    server.concurrency = 4
+
     // Start the server on localhost
     // Note: we'll skip error handling in the demo
-    try! server.start()
+    try! server.start(port: 9000, interface: "localhost")
 
     // Log the url for easy access
-    serverLog("Server is running at \(serverURL())")
-  }
-
-  private func serverURL(path: String = "") -> URL {
-    /// Generate a server url, we'll assume the server has been started
-    var components = URLComponents()
-    components.scheme = server.isSecure ? "https" : "http"
-    components.host = "localhost"
-    components.port = Int(server.port)
-    components.path = path
-    return components.url!
+    print("[SERVER]", "Server is running - url:", serverURL())
   }
 }
 
 extension TelegraphDemo {
+  /// Demonstrates a GET request on the /hello endpoint.
   private func demoClientNormalRequest() {
-    // Demonstrate a request on the /hello endpoint
     let request = URLRequest(url: serverURL(path: "/hello"))
     performClientRequest(with: request, completionHandler: self.clientHandleHello)
   }
 
+  /// Demonstrates a POST request on the /data endpoint.
   private func demoClientJSONRequest() {
-    // Prepare some JSON
-    let content = ["name": "Yvo"]
-    let jsonData = try! JSONSerialization.data(withJSONObject: content)
-
-    // Demonstrate a JSON request on the /data endpoint
     var request = URLRequest(url: serverURL(path: "/data"))
     request.httpMethod = "POST"
-    request.httpBody = jsonData
+    request.httpBody = try! JSONEncoder().encode(["name": "Yvo"])
     performClientRequest(with: request, completionHandler: self.clientHandleData)
   }
 
+  /// Demonstrates a client websocket connection.
   private func demoWebSocketConnect() {
     // Create the web socket client instance
     if let caCertificate = caCertificate {
@@ -128,108 +119,89 @@ extension TelegraphDemo {
     webSocketClient.delegate = self
     webSocketClient.connect()
   }
-
-  private func performClientRequest(with request: URLRequest, completionHandler: @escaping (Data?, URLResponse) -> Void) {
-    // Create a client session, we are setting ourself as the delegate to customize the SSL handshake
-    let httpClient = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
-
-    // Create the request task, we'll centralize the request errors
-    let httpTask = httpClient.dataTask(with: request) { data, response, error in
-      // Did an error occur?
-      guard error == nil else {
-        self.clientLog("Request failed, error: \(error!)")
-        return
-      }
-
-      // Call the handler
-      completionHandler(data, response!)
-    }
-
-    // Perform the request
-    httpTask.resume()
-  }
 }
 
 // MARK: - Server route handlers
 
 extension TelegraphDemo {
+  /// Raised when the /hello endpoint is called.
   private func serverHandleHello(request: HTTPRequest) -> HTTPResponse {
-    // Raised when the /hello enpoint is called
-    // Process the (optional) url parameters
     let name = request.params["name"] ?? "stranger"
-
-    // Send a friendly text reponse
     return HTTPResponse(content: "Hello \(name.capitalized)")
   }
 
+  /// Raised when the /redirect endpoint is called.
+  private func serverHandleRedirect(request: HTTPRequest) -> HTTPResponse {
+    let response = HTTPResponse(.temporaryRedirect)
+    response.headers.location = "https://www.google.com"
+    return response
+  }
+
+  /// Raised when the /data endpoint is called.
   private func serverHandleData(request: HTTPRequest) -> HTTPResponse {
-    // Raised when the /data enpoint is called
-    var name = "stranger"
+    // Decode the request body using the JSON decoder, fallback to "stranger" if the data is invalid
+    let requestDict = try? JSONDecoder().decode([String: String].self, from: request.body)
+    let name = requestDict?["name"] ?? "stranger"
 
-    // Try to extract a name from the JSON data
-    if let json = try? JSONSerialization.jsonObject(with: request.body),
-       let content = json as? [String: Any], let jsonName = content["name"] as? String {
-      name = jsonName
-    }
-
-    // Prepare the JSON response data
-    let content = ["welcome": name]
-    let jsonData = try! JSONSerialization.data(withJSONObject: content)
-
-    // Send a JSON response
-    return HTTPResponse(data: jsonData)
+    // Send a JSON response containing the name of our visitor
+    let responseDict = ["welcome": name]
+    let jsonData = try! JSONEncoder().encode(responseDict)
+    return HTTPResponse(body: jsonData)
   }
 }
 
 // MARK: - Client request handlers
 
 extension TelegraphDemo {
+  /// Raised when the client processes the /hello endpoint response.
   private func clientHandleHello(data: Data?, response: URLResponse) {
-    // Raised when the client processes the /hello endpoint response
     if let textData = data, let text = String(data: textData, encoding: .utf8) {
-      clientLog("Request on /hello succeeded: \(text)")
+      print("[CLIENT]", "Request on /hello succeeded - text:", text)
     }
   }
 
+  /// Raised when the client processes the /data endpoint response.
   private func clientHandleData(data: Data?, response: URLResponse) {
-    // Raised when the client processes the /data endpoint response
-    if let jsonData = data, let json = try? JSONSerialization.jsonObject(with: jsonData) {
-      clientLog("Request on /data succeded: \(json)")
+    if let jsonData = data, let json = try? JSONDecoder().decode([String: String].self, from: jsonData) {
+      print("[CLIENT]", "Request on /data succeded - json:", json)
     }
+  }
+}
+
+// MARK: - ServerDelegate implementation
+
+extension TelegraphDemo: ServerDelegate {
+  // Raised when the server gets disconnected.
+  public func serverDidStop(_ server: Server, error: Error?) {
+    print("[SERVER]", "Server stopped:", error?.localizedDescription ?? "no details")
   }
 }
 
 // MARK: - ServerWebSocketDelegate implementation
 
 extension TelegraphDemo: ServerWebSocketDelegate {
+  /// Raised when a web socket client connects to the server.
   public func server(_ server: Server, webSocketDidConnect webSocket: WebSocket, handshake: HTTPRequest) {
-    // Raised when a web socket client connects to the server
     let name = handshake.headers["X-Name"] ?? "stranger"
-    serverLog("WebSocket connected (\(name))")
+    print("[SERVER]", "WebSocket connected - name:", name)
+
+    webSocket.send(text: "Welcome client \(name)")
+    webSocket.send(data: Data([0x00, 0x01, 0x02, 0x03, 0x04, 0x05]))
   }
 
+  /// Raised when a web socket client disconnects from the server.
   public func server(_ server: Server, webSocketDidDisconnect webSocket: WebSocket, error: Error?) {
-    // Raised when a web socket client disconnects from the server
-    if let error = error {
-      serverLog("WebSocket disconnected, error: \(error)")
-    } else {
-      serverLog("WebSocket disconnected")
-    }
+    print("[SERVER]", "WebSocket disconnected:", error?.localizedDescription ?? "no details")
   }
 
+  /// Raised when the server receives a web socket message.
   public func server(_ server: Server, webSocket: WebSocket, didReceiveMessage message: WebSocketMessage) {
-    // Raised when the server receives a web socket message
-    serverLog("WebSocket received message: \(message)")
+    print("[SERVER]", "WebSocket message received:", message)
   }
 
+  /// Raised when the server sends a web socket message.
   public func server(_ server: Server, webSocket: WebSocket, didSendMessage message: WebSocketMessage) {
-    // Raised when the server sends a web socket message
-    serverLog("WebSocket sent message: \(message)")
-  }
-
-  public func serverDidDisconnect(_ server: Server) {
-    // Raised when the server gets disconnected
-    serverLog("Server disconnected")
+    print("[SERVER]", "WebSocket message sent:", message)
   }
 }
 
@@ -247,42 +219,56 @@ extension TelegraphDemo: URLSessionDelegate {
 // MARK: - WebSocketClientDelegate implementation
 
 extension TelegraphDemo: WebSocketClientDelegate {
+  /// Raised when the web socket client has connected to the server.
   public func webSocketClient(_ client: WebSocketClient, didConnectToHost host: String) {
-    // Raised when the web socket client has connected to the server
-    clientLog("WebSocket connected to \(host)")
-
-    server.webSockets.forEach { $0.send(text: "This is a text message") }
-    server.webSockets.forEach { $0.send(data: Data(bytes: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05])) }
+    print("[CLIENT]", "WebSocket connected - host:", host)
   }
 
+  /// Raised when the web socket client received data.
   public func webSocketClient(_ client: WebSocketClient, didReceiveData data: Data) {
-    // Raised when the web socket client received data
-    clientLog("WebSocket received data: \(data as NSData)")
+    print("[CLIENT]", "WebSocket message received - data:", data as NSData)
   }
 
+  /// Raised when the web socket client received text.
   public func webSocketClient(_ client: WebSocketClient, didReceiveText text: String) {
-    // Raised when the web socket client received text
-    clientLog("WebSocket received text: \(text)")
+    print("[CLIENT]", "WebSocket message received - text:", text)
   }
 
+  /// Raised when the web socket client disconnects. Provides an error if the disconnect was unexpected.
   public func webSocketClient(_ client: WebSocketClient, didDisconnectWithError error: Error?) {
-    // Raised when the web socket client disconnects. Provides an error if the disconnect was unexpected.
-    if let error = error {
-      clientLog("WebSocket disconnected, error: \(error)")
-    } else {
-      clientLog("WebSocket disconnected")
-    }
+    print("[CLIENT]", "WebSocket disconnected - error:", error?.localizedDescription ?? "no error")
   }
 }
 
-// MARK: Logging helpers
+// MARK: Request helpers
 
 extension TelegraphDemo {
-  private func serverLog(_ message: String) {
-    print("[SERVER] \(message)")
+  /// Performs a client request to our server.
+  private func performClientRequest(with request: URLRequest, completionHandler: @escaping (Data?, URLResponse) -> Void) {
+    // Create a client session, we are setting ourself as the delegate to customize the SSL handshake
+    let httpClient = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+
+    // Create the request task, we'll centralize the request errors
+    let httpTask = httpClient.dataTask(with: request) { data, response, error in
+      if let error = error {
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        print("[CLIENT]", "Request failed - status:", statusCode, "- error: \(error)")
+      } else {
+        completionHandler(data, response!)
+      }
+    }
+
+    // Perform the request
+    httpTask.resume()
   }
 
-  private func clientLog(_ message: String) {
-    print("[CLIENT] \(message)")
+  /// Generates a server url, we'll assume the server has been started.
+  private func serverURL(path: String = "") -> URL {
+    var components = URLComponents()
+    components.scheme = server.isSecure ? "https" : "http"
+    components.host = "localhost"
+    components.port = Int(server.port)
+    components.path = path
+    return components.url!
   }
 }

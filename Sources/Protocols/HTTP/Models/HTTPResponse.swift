@@ -10,20 +10,19 @@ import Foundation
 
 open class HTTPResponse: HTTPMessage {
   public typealias Handler = (HTTPResponse, Error) -> Void
-  public static let dateFormatter = DateFormatter.rfc7231
 
   public var status: HTTPStatus
-  public var closeAfterWrite = false
 
   /// Initializes a new HTTPResponse
-  public init(_ statusCode: HTTPStatusCode = .ok) {
-    self.status = HTTPStatus(code: statusCode)
-    super.init()
+  public init(_ status: HTTPStatus = .ok, version: HTTPVersion = .default,
+              headers: HTTPHeaders = .empty, body: Data = Data()) {
+    self.status = status
+    super.init(version: version, headers: headers, body: body)
   }
 
   /// Writes the first line of the response, e.g. HTTP/1.1 200 OK
   override internal var firstLine: String {
-    return "\(version) \(status.code) \(status.phrase)"
+    return "\(version) \(status)"
   }
 
   /// Prepares the response to be written tot the stream
@@ -31,43 +30,40 @@ open class HTTPResponse: HTTPMessage {
     super.prepareForWrite()
 
     // Set the date header
-    headers.date = HTTPResponse.dateFormatter.string(from: Date())
+    headers.date = Date().rfc1123
 
     // If a body is allowed set the content length (even when 0)
     if status.supportsBody {
       headers.contentLength = body.count
     } else {
       headers.contentLength = nil
-      body = Data()
+      body.count = 0
     }
   }
 }
 
 // MARK: Convenience initializers
 
-extension HTTPResponse {
-  public convenience init(_ statusCode: HTTPStatusCode = .ok, data: Data) {
-    self.init(statusCode)
-    body = data
+public extension HTTPResponse {
+  /// Creates an HTTP response to send textual content.
+  convenience init(_ status: HTTPStatus = .ok, headers: HTTPHeaders = .empty, content: String) {
+    self.init(status, headers: headers, body: content.utf8Data)
   }
 
-  public convenience init(_ statusCode: HTTPStatusCode = .ok, content: String) {
-    self.init(statusCode, data: content.utf8Data)
-  }
+  /// Creates an HTTP response to send an error.
+  convenience init(_ status: HTTPStatus = .internalServerError, headers: HTTPHeaders = .empty, error: Error) {
+    var errorHeaders = headers
+    errorHeaders.connection = "close"
 
-  public convenience init(_ statusCode: HTTPStatusCode = .internalServerError, error: Error) {
-    self.init(statusCode, content: "\(error)")
-    self.closeAfterWrite = true
+    self.init(status, headers: errorHeaders, body: error.localizedDescription.utf8Data)
   }
 }
 
 // MARK: CustomStringConvertible
 
 extension HTTPResponse: CustomStringConvertible {
-  open var description: String {
-    let me = self
-    let typeName = type(of: me)
-    let address = Unmanaged.passUnretained(me).toOpaque()
-    return "<\(typeName): \(address) status: \(me.status), headers: \(me.headers.count), body: \(me.body.count)>"
+  public var description: String {
+    let typeName = type(of: self)
+    return "<\(typeName): \(version) \(status), headers: \(headers.count), body: \(body.count)>"
   }
 }

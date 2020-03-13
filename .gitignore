@@ -16,14 +16,9 @@ xcuserdata
 *.pbxuser
 *.perspectivev3
 
-# OCLint
-compile_commands.json
-oclint.html
-xcodebuild.log
-
-# Third party tools
-.idea/
-FauxPasConfig/
+# Swift Package Manager
+.build/
+Package.resolved
 
 # Exceptions
 !default.pbxuser

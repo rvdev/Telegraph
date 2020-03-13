@@ -9,20 +9,25 @@
 import Foundation
 
 open class HTTPMessage {
-  public var headers = HTTPHeaders()
-  public var body = Data()
-  public var version = HTTPVersion(1, 1)
+  public var version: HTTPVersion
+  public var headers: HTTPHeaders
+  public var body: Data
 
   internal var firstLine: String { return "" }
   internal var stripBody = false
 
+  /// Creates a new HTTPMessage.
+  public init(version: HTTPVersion = .default, headers: HTTPHeaders = .empty, body: Data = Data()) {
+    self.version = version
+    self.headers = headers
+    self.body = body
+  }
+
   /// Performs last minute changes to the message, just before writing it to the stream.
   open func prepareForWrite() {
     // Set the keep alive connection header
-    if version.minor == 0 {
-      keepAlive = false
-    } else if headers.connection == nil {
-      keepAlive = true
+    if headers.connection == nil {
+      headers.connection = keepAlive ? "keep-alive" : "close"
     }
   }
 
@@ -35,18 +40,23 @@ open class HTTPMessage {
 
   /// Writes the first line and headers to the provided stream.
   open func writeHeader(to stream: WriteStream, timeout: TimeInterval) {
+    var head = Data()
+    head.reserveCapacity(100)
+
     // Write the first line
-    stream.write(data: firstLine.utf8Data, timeout: timeout)
-    stream.write(data: .crlf, timeout: timeout)
+    head.append(firstLine.utf8Data)
+    head.append(.crlf)
 
     // Write the headers
     headers.forEach { key, value in
-      stream.write(data: "\(key): \(value)".utf8Data, timeout: timeout)
-      stream.write(data: .crlf, timeout: timeout)
+      head.append("\(key): \(value)".utf8Data)
+      head.append(.crlf)
     }
 
     // Signal the end of the headers with another crlf
-    stream.write(data: .crlf, timeout: timeout)
+    head.append(.crlf)
+
+    stream.write(data: head, timeout: timeout)
   }
 
   /// Writes the body to the provided stream.
@@ -59,14 +69,15 @@ open class HTTPMessage {
 
 // MARK: Helper methods
 
-extension HTTPMessage {
+public extension HTTPMessage {
+  /// Returns a boolean indicating if the connection should be kept open.
   var keepAlive: Bool {
-    get { return headers.connection?.lowercased() != "close" }
-    set { headers.connection = newValue ? "keep-alive" : "close" }
+    guard let connection = headers.connection else { return version.minor != 0 }
+    return connection.caseInsensitiveCompare("close") != .orderedSame
   }
 
+  /// Returns a boolean indicating if this message carries an instruction to upgrade.
   var isConnectionUpgrade: Bool {
-    get { return headers.connection?.lowercased() == "upgrade" }
-    set { headers.connection = newValue ? "upgrade" : nil }
+    return headers.connection?.caseInsensitiveCompare("upgrade") == .orderedSame
   }
 }

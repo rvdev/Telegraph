@@ -12,13 +12,15 @@ public struct HTTPVersion {
   public let major: UInt
   public let minor: UInt
 
-  public init(_ major: UInt, _ minor: UInt) {
+  public init(major: UInt, minor: UInt) {
     self.major = major
     self.minor = minor
   }
 }
 
-// MARK: CustomStringConvertible
+public extension HTTPVersion {
+  static let `default` = HTTPVersion(major: 1, minor: 1)
+}
 
 extension HTTPVersion: CustomStringConvertible {
   public var description: String {

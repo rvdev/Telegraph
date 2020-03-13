@@ -41,7 +41,13 @@ extension HTTPError: CustomStringConvertible {
     case .invalidContentLength: return "Invalid content length"
 
     case .headerOverflow: return "Received too many headers"
-    case .parseFailed(let code): return "Invalid request, parser failed with code \(code)"
+    case .parseFailed(let code): return "Invalid data, parser failed with code \(code)"
     }
+  }
+}
+
+extension HTTPError: LocalizedError {
+  public var errorDescription: String? {
+    return description
   }
 }

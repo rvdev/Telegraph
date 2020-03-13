@@ -12,27 +12,27 @@ import Foundation
 
 public protocol HTTPConnectionDelegate: class {
   func connection(_ httpConnection: HTTPConnection, didCloseWithError error: Error?)
-  func connection(_ httpConnection: HTTPConnection, handleIncomingRequest request: HTTPRequest, error: Error?) -> HTTPResponse?
+  func connection(_ httpConnection: HTTPConnection, handleIncomingRequest request: HTTPRequest, error: Error?)
   func connection(_ httpConnection: HTTPConnection, handleIncomingResponse response: HTTPResponse, error: Error?)
-  func connection(_ httpConnection: HTTPConnection, handleUpgradeTo protocolName: String, initiatedBy request: HTTPRequest) -> Bool
+  func connection(_ httpConnection: HTTPConnection, handleUpgradeByRequest request: HTTPRequest)
 }
 
 // MARK: HTTPConnection
 
-public class HTTPConnection: TCPConnection, Hashable, Equatable {
+public class HTTPConnection: TCPConnection {
   public weak var delegate: HTTPConnectionDelegate?
 
-  internal let socket: TCPSocket
+  private let socket: TCPSocket
   private let config: HTTPConfig
   private var parser: HTTPParser
   private var upgrading = false
+  private var upgradeData: Data?
 
   /// Initializes the HTTP connection.
   public required init(socket: TCPSocket, config: HTTPConfig) {
     self.socket = socket
     self.config = config
     self.parser = HTTPParser()
-    self.parser.delegate = self
   }
 
   /// Opens the connection.
@@ -46,6 +46,17 @@ public class HTTPConnection: TCPConnection, Hashable, Equatable {
     socket.close(when: immediately ? .immediately : .afterWriting)
   }
 
+  /// Upgrades the connection.
+  public func upgrade() -> (TCPSocket, Data?) {
+    upgrading = true
+    return (socket, upgradeData)
+  }
+
+  /// Sends raw data by writing it to the stream. This can be useful for writing body data over time to a keep-alive connection.
+  public func send(data: Data, timeout: TimeInterval) {
+    socket.write(data: data, timeout: timeout)
+  }
+
   /// Sends the request by writing it to the stream.
   public func send(request: HTTPRequest) {
     request.prepareForWrite()
@@ -53,17 +64,64 @@ public class HTTPConnection: TCPConnection, Hashable, Equatable {
   }
 
   /// Sends the response by writing it to the stream.
-  public func send(response: HTTPResponse) {
+  public func send(response: HTTPResponse, toRequest request: HTTPRequest) {
+    // Do not write the body for HEAD requests
+    if request.method == .HEAD {
+      response.stripBody = true
+    }
+
+    // Do not keep-alive if the request doesn't want keep-alive
+    if request.keepAlive == false {
+      response.headers.connection = "close"
+    }
+
+    // Prepare and send the response
     response.prepareForWrite()
     response.write(to: socket, headerTimeout: config.writeHeaderTimeout, bodyTimeout: config.writeBodyTimeout)
+
+    // Does the response request a connection upgrade?
+    if response.isConnectionUpgrade {
+      delegate?.connection(self, handleUpgradeByRequest: request)
+      return
+    }
+
+    // Close the connection after writing if not keep-alive
+    if !response.keepAlive {
+      close(immediately: false)
+    }
   }
 
   /// Handles incoming data.
   private func received(data: Data) {
     do {
-      try parser.parse(data: data)
-      if !upgrading { socket.read(timeout: config.readTimeout) }
+      let bytesParsed = try parser.parse(data: data)
+
+      // Do we detect a connection upgrade?
+      if parser.isUpgradeDetected {
+        upgrading = true
+
+        // The data might have contained data of the new protocol
+        if bytesParsed < data.count {
+          upgradeData = data.subdata(in: bytesParsed..<data.count)
+        }
+
+        // Handle the message, no need to reset, this connection will end
+        received(message: parser.message, error: nil)
+        return
+      }
+
+      // Do we have a complete message?
+      if parser.isMessageComplete {
+        received(message: parser.message, error: nil)
+        parser.reset()
+      }
+
+      // Continue reading
+      if !upgrading {
+        socket.read(timeout: config.readTimeout)
+      }
     } catch {
+      // If we encounter a parser error, try to handle it gracefully
       received(message: parser.message, error: error)
     }
   }
@@ -71,91 +129,44 @@ public class HTTPConnection: TCPConnection, Hashable, Equatable {
   /// Handles an incoming HTTP message.
   private func received(message: HTTPMessage?, error: Error?) {
     switch message {
-    case is HTTPRequest:
-      received(request: message as! HTTPRequest, error: error)
-    case is HTTPResponse:
-      received(response: message as! HTTPResponse, error: error)
+    case let message as HTTPRequest:
+      delegate?.connection(self, handleIncomingRequest: message, error: error)
+    case let message as HTTPResponse:
+      delegate?.connection(self, handleIncomingResponse: message, error: error)
     default:
-      socket.close()
+      close(immediately: true)
     }
   }
+}
 
-  /// Handles an incoming request.
-  private func received(request: HTTPRequest, error: Error?) {
-    var messageError = error
-
-    // This server only supports HTTP/1.0 and HTTP/1.1
-    if request.version.major != 1 && request.version.minor > 1 {
-      messageError = messageError ?? HTTPError.invalidVersion
-    }
-
-    // Ask the delegate to handle the incoming request
-    guard let response = delegate?.connection(self, handleIncomingRequest: request, error: error) else {
-      socket.close()
-      return
-    }
-
-    // Match the http version
-    response.version = request.version
-
-    // Do not write the body for HEAD requests
-    if request.method == .head {
-      response.stripBody = true
-    }
-
-    // Send the response
-    send(response: response)
-
-    // Should we upgrade the connection?
-    if response.isConnectionUpgrade {
-      let protocolName = response.headers.upgrade!.lowercased()
-      if delegate?.connection(self, handleUpgradeTo: protocolName, initiatedBy: request) == true {
-        upgrading = true
-        return
-      }
-
-      // Invalid upgrade, close the connection
-      response.closeAfterWrite = true
-    }
-
-    // Close the connection?
-    if !request.keepAlive || response.closeAfterWrite {
-      socket.close(when: .afterWriting)
-    }
+public extension HTTPConnection {
+  /// The local endpoint information of the connection.
+  var localEndpoint: Endpoint? {
+    return socket.localEndpoint
   }
 
-  /// Handles an incoming response.
-  private func received(response: HTTPResponse, error: Error?) {
-    upgrading = response.isConnectionUpgrade
-    delegate?.connection(self, handleIncomingResponse: response, error: error)
+  /// The remote endpoint information of the connection.
+  var remoteEndpoint: Endpoint? {
+    return socket.remoteEndpoint
   }
 }
 
 // MARK: TCPSocketDelegate implementation
 
 extension HTTPConnection: TCPSocketDelegate {
-  public func socketDidRead(_ socket: TCPSocket, data: Data) {
+  /// Raised when the socket is connected (ignore, socket is already connected).
+  public func socketDidOpen(_ socket: TCPSocket) {}
+
+  /// Raised when the socket is disconnected.
+  public func socketDidClose(_ socket: TCPSocket, error: Error?) {
+    delegate?.connection(self, didCloseWithError: error)
+  }
+
+  /// Raised when the socket received data.
+  public func socketDidRead(_ socket: TCPSocket, data: Data, tag: Int) {
     received(data: data)
   }
 
-  public func socketDidClose(_ socket: TCPSocket, wasOpen: Bool, error: Error?) {
-    parser.delegate = nil
-    delegate?.connection(self, didCloseWithError: error)
-  }
-}
-
-// MARK: HTTPParserDelegate implementation
-
-extension HTTPConnection: HTTPParserDelegate {
-  public func parser(_ parser: HTTPParser, didCompleteMessage message: HTTPMessage) {
-    received(message: message, error: nil)
-  }
-}
-
-// MARK: HTTPConnectionDelegate default implementation
-
-extension HTTPConnectionDelegate {
-  public func connection(_ httpConnection: HTTPConnection, handleIncomingRequest request: HTTPRequest, error: Error?) -> HTTPResponse? { return nil }
-  public func connection(_ httpConnection: HTTPConnection, handleIncomingResponse response: HTTPResponse, error: Error?) {}
-  public func connection(_ httpConnection: HTTPConnection, handleUpgradeTo protocolName: String, initiatedBy request: HTTPRequest) -> Bool { return false }
+  /// Raised when the socket sent data (ignore).
+  public func socketDidWrite(_ socket: TCPSocket, tag: Int) {}
 }

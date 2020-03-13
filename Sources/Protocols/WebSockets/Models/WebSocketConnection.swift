@@ -24,8 +24,8 @@ open class WebSocketConnection: TCPConnection, WebSocket {
   private let socket: TCPSocket
   private let config: WebSocketConfig
   private var parser: WebSocketParser
-
   private var pingTimer: DispatchTimer?
+  private var closing = false
 
   /// Initializes a new websocket connection.
   public required init(socket: TCPSocket, config: WebSocketConfig) {
@@ -36,7 +36,7 @@ open class WebSocketConnection: TCPConnection, WebSocket {
 
     // Define a ping timer if a ping interval is set
     if config.pingInterval > 0 {
-      pingTimer = DispatchTimer(interval: config.pingInterval) { [weak self] in
+      pingTimer = DispatchTimer(interval: config.pingInterval, queue: .global()) { [weak self] in
         self?.send(message: WebSocketMessage(opcode: .ping))
       }
     }
@@ -44,45 +44,53 @@ open class WebSocketConnection: TCPConnection, WebSocket {
 
   /// Opens the connection.
   public func open() {
+    open(data: nil)
+  }
+
+  /// Opens the connection with an existing chunk of data.
+  public func open(data: Data?) {
     socket.delegate = self
 
     // Start the ping timer
     pingTimer?.start()
 
-    // Start reading
-    socket.read(timeout: config.readTimeout)
+    // Is the data relevant?
+    if let data = data, !data.isEmpty {
+      received(data: data)
+    } else {
+      socket.read(timeout: config.readTimeout)
+    }
   }
 
   /// Closes the connection.
   public func close(immediately: Bool) {
-    parser.delegate = nil
+    // Normal close routine is to send a close message and wait for a close reply
+    if !immediately && !closing {
+      send(message: WebSocketMessage(closeCode: 1001))
+      return
+    }
 
     // Stop the ping timer
     pingTimer?.stop()
 
-    // We should send a close message if we can
-    if immediately {
-      socket.close(when: .immediately)
-    } else {
-      send(message: WebSocketMessage(opcode: .connectionClose))
-      socket.close(when: .afterWriting)
-    }
+    // Close the socket
+    socket.close(when: immediately ? .immediately : .afterWriting)
   }
 
   /// Sends a websocket message
-  open func send(message: WebSocketMessage) {
+  public func send(message: WebSocketMessage) {
     do {
+      // Is this a close handshake? Mark the connection as closing
+      if message.opcode == .connectionClose {
+        closing = true
+      }
+
       // Pass the message through the handler
       try config.messageHandler.outgoing(message: message, to: self)
 
       // Send the message
       message.maskBit = config.maskMessages
       message.write(to: socket, headerTimeout: config.writeHeaderTimeout, payloadTimeout: config.writePayloadTimeout)
-
-      // Close the connection if the opcode instructs so
-      if message.opcode == .connectionClose {
-        socket.close(when: .afterWriting)
-      }
 
       delegate?.connection(self, didSendMessage: message)
     } catch {
@@ -117,16 +125,36 @@ open class WebSocketConnection: TCPConnection, WebSocket {
   }
 }
 
+public extension WebSocketConnection {
+  /// The local endpoint information of the connection.
+  var localEndpoint: Endpoint? {
+    return socket.localEndpoint
+  }
+
+  /// The remote endpoint information of the connection.
+  var remoteEndpoint: Endpoint? {
+    return socket.remoteEndpoint
+  }
+}
+
 // MARK: TCPSocketConnectionDelegate implementation
 
 extension WebSocketConnection: TCPSocketDelegate {
-  public func socketDidRead(_ socket: TCPSocket, data: Data) {
+  /// Raised when the socket is connected (ignore, socket is already connected).
+  public func socketDidOpen(_ socket: TCPSocket) {}
+
+  /// Raised when the socket is disconnected.
+  public func socketDidClose(_ socket: TCPSocket, error: Error?) {
+    delegate?.connection(self, didCloseWithError: error)
+  }
+
+  /// Raised when the socket received data.
+  public func socketDidRead(_ socket: TCPSocket, data: Data, tag: Int) {
     received(data: data)
   }
 
-  public func socketDidClose(_ socket: TCPSocket, wasOpen: Bool, error: Error?) {
-    delegate?.connection(self, didCloseWithError: error)
-  }
+  /// Raised when the socket sent data (ignore).
+  public func socketDidWrite(_ socket: TCPSocket, tag: Int) {}
 }
 
 // MARK: WebSocketParserDelegate implementation

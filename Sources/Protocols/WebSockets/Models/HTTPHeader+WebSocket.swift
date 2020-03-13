@@ -8,24 +8,31 @@
 
 import Foundation
 
-extension CustomKeyIndexable where Key == HTTPHeader, Value == String {
-  public var webSocketAccept: String? {
-    get { return self["Sec-WebSocket-Accept"] }
-    set { self["Sec-WebSocket-Accept"] = newValue }
+public extension HTTPHeaderName {
+  static let webSocketAccept = HTTPHeaderName("Sec-WebSocket-Accept")
+  static let webSocketKey = HTTPHeaderName("Sec-WebSocket-Key")
+  static let webSocketProtocol = HTTPHeaderName("Sec-WebSocket-Protocol")
+  static let webSocketVersion = HTTPHeaderName("Sec-WebSocket-Version")
+}
+
+public extension Dictionary where Key == HTTPHeaderName, Value == String {
+  var webSocketAccept: String? {
+    get { return self[.webSocketAccept] }
+    set { self[.webSocketAccept] = newValue }
   }
 
-  public var webSocketKey: String? {
-    get { return self["Sec-WebSocket-Key"] }
-    set { self["Sec-WebSocket-Key"] = newValue }
+  var webSocketKey: String? {
+    get { return self[.webSocketKey] }
+    set { self[.webSocketKey] = newValue }
   }
 
-  public var webSocketProtocol: String? {
-    get { return self["Sec-WebSocket-Protocol"] }
-    set { self["Sec-WebSocket-Protocol"] = newValue }
+  var webSocketProtocol: String? {
+    get { return self[.webSocketProtocol] }
+    set { self[.webSocketProtocol] = newValue }
   }
 
-  public var webSocketVersion: String? {
-    get { return self["Sec-WebSocket-Version"] }
-    set { self["Sec-WebSocket-Version"] = newValue }
+  var webSocketVersion: String? {
+    get { return self[.webSocketVersion] }
+    set { self[.webSocketVersion] = newValue }
   }
 }
